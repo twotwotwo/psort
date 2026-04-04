@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -171,7 +173,7 @@ func sortKeyString[S ~[]E, E any](x S, key func(E) string, tiebreaker func(a, b 
 		}
 	}
 
-	SortFunc(keyed, cmpFn)
+	sortAbbrev(keyed, cmpFn)
 
 	for i := range keyed {
 		x[i] = keyed[i].elem
@@ -211,9 +213,84 @@ func sortKeyBytesImpl[S ~[]E, E any](x S, key func(E) []byte, tiebreaker func(a,
 		}
 	}
 
-	SortFunc(keyed, cmpFn)
+	sortAbbrev(keyed, cmpFn)
 
 	for i := range keyed {
 		x[i] = keyed[i].elem
+	}
+}
+
+// --- In-place MSD radix sort on abbreviated keys ---
+
+// radixSortThreshold is the bucket size at which MSD radix sort stops
+// recursing and falls back to slices.SortFunc (pdqsort).
+const radixSortThreshold = 1024
+
+// sortAbbrev sorts keyed using parallel partitioning followed by
+// per-partition MSD radix sort on the abbrev field.
+func sortAbbrev[E any](keyed []abbrevElem[E], cmpFn func(a, b abbrevElem[E]) int) {
+	if len(keyed) < minParallel {
+		radixSortAbbrev(keyed, 0, cmpFn)
+		return
+	}
+
+	nproc := runtime.GOMAXPROCS(0)
+	parts, sorted := partitionCmpFunc(keyed, nproc, cmpFn)
+	if sorted {
+		return
+	}
+	sortPartitions(parts, nproc, func(lo, hi int) {
+		radixSortAbbrev(keyed[lo:hi], 0, cmpFn)
+	})
+}
+
+// radixSortAbbrev performs an in-place MSD radix sort on data, keyed
+// by byte byteIdx (0 = MSB) of the abbrev field. When a bucket is
+// small enough or all 8 abbrev bytes are exhausted, it falls back to
+// cmpFn (which does a full key comparison for ties).
+func radixSortAbbrev[E any](data []abbrevElem[E], byteIdx int, cmpFn func(a, b abbrevElem[E]) int) {
+	if len(data) <= radixSortThreshold || byteIdx >= 8 {
+		slices.SortFunc(data, cmpFn)
+		return
+	}
+
+	shift := uint(56 - 8*byteIdx)
+
+	// Count occurrences of each byte value.
+	var count [256]int
+	for i := range data {
+		count[uint8(data[i].abbrev>>shift)]++
+	}
+
+	// Prefix sum to get bucket start positions.
+	var bucketStart [256]int
+	var offset [256]int
+	pos := 0
+	for b := 0; b < 256; b++ {
+		bucketStart[b] = pos
+		offset[b] = pos
+		pos += count[b]
+	}
+
+	// In-place permutation: for each bucket, swap elements into their
+	// target bucket until every position holds the right byte value.
+	for b := 0; b < 256; b++ {
+		end := bucketStart[b] + count[b]
+		for offset[b] < end {
+			target := int(uint8(data[offset[b]].abbrev >> shift))
+			if target == b {
+				offset[b]++
+			} else {
+				data[offset[b]], data[offset[target]] = data[offset[target]], data[offset[b]]
+				offset[target]++
+			}
+		}
+	}
+
+	// Recurse into each bucket with more than one element.
+	for b := 0; b < 256; b++ {
+		if count[b] > 1 {
+			radixSortAbbrev(data[bucketStart[b]:bucketStart[b]+count[b]], byteIdx+1, cmpFn)
+		}
 	}
 }
