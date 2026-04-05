@@ -224,7 +224,7 @@ func sortKeyBytesImpl[S ~[]E, E any](x S, key func(E) []byte, tiebreaker func(a,
 
 // radixSortThreshold is the bucket size at which MSD radix sort stops
 // recursing and falls back to slices.SortFunc (pdqsort).
-const radixSortThreshold = 1024
+var radixSortThreshold = 128
 
 // sortAbbrev sorts keyed using parallel partitioning followed by
 // per-partition MSD radix sort on the abbrev field.
@@ -277,12 +277,15 @@ func radixSortAbbrev[E any](data []abbrevElem[E], byteIdx int, cmpFn func(a, b a
 	for b := 0; b < 256; b++ {
 		end := bucketStart[b] + count[b]
 		for offset[b] < end {
-			target := int(uint8(data[offset[b]].abbrev >> shift))
-			if target == b {
-				offset[b]++
-			} else {
-				data[offset[b]], data[offset[target]] = data[offset[target]], data[offset[b]]
-				offset[target]++
+			// Looping over the bucket looks like more work, but avoids
+			// a dependency between one swap and the next. The CPU can
+			// ask for the item it will swap bucket[1] with even before
+			// it knows what the new bucket[0] is after the previous
+			// swap.
+			for i := offset[b]; i < end; i++ {
+				target := int(uint8(data[i].abbrev >> shift))
+				data[i], data[offset[target]] = data[offset[target]], data[i]
+				offset[target]++  // target may be b!
 			}
 		}
 	}
