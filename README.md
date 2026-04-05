@@ -18,17 +18,18 @@ structs by a field, and sorts for byte slices (`SortBytes` and
 `SortKeyBytes`) that use the abbreviated-key trick.
 
 On an eight-core Zen 3 laptop CPU with Go 1.24, sorting 10M random 20-byte
-strings took 3.6s with the stdlib, 1s with `twotwotwo/sorts`, and 0.5s with
-`psort`.  Sorting 10M ints took 0.73s with the stdlib, 0.22s with 
-`twotwotwo/sorts`, and 0.16s with `psort`.
+strings took 3.5s with the stdlib, 0.95s with twotwotwo/sorts, and 0.29s
+with psort. Sorting 10M ints took 0.72s with the stdlib, 0.24s with
+twotwotwo/sorts, and 0.16s with psort.
 
-If you don't want the abbreviated-key sorting, there's `SortFunc` (as in
-`SortFunc(myStrings, strings.Compare)`) or, for convenience,
-`SortInPlace(myStrings)`.  In ideal conditions, abbreviated-key sorting
-roughly doubles sorting speed, but it needs 24 bytes of temporary space per
-string sorted, and it doesn't help when prefixes lack diversity (e.g. when
-sorting URLs mostly starting "https://").  The in-place string sort takes
-about 1s with `SortInPlace`.
+In ideal conditions, abbreviated-key sorting more than doubles sorting speed.
+The current implementation uses 8-10 bytes of temp space per string sorted,
+with a sync.Pool that can help if you're doing many sorts.
+It won't help when prefixes are mostly the same, like URLs all starting
+"https://"; it detects extreme cases of that and disables abbreviated
+keys. You can explicitly disable abbreviated keys by using `SortFunc` (as
+in `SortFunc(myStrings, strings.Compare)`) or, for convenience,
+`SortInPlace(myStrings)`.
 
 And!  Though I put real effort into trying different approaches and getting
 the code simple and well-tested, know the code is LLM-generated.

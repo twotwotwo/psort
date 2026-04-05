@@ -35,8 +35,8 @@ var minParallel = 1 << 13 // 8192
 //
 // For []string, Sort uses an abbreviated-key optimization that is
 // faster than a pure comparison sort for large slices, at the cost of
-// a temporary allocation of approximately 24 bytes per element. For
-// all other ordered types, Sort is an in-place comparison sort with
+// a temporary []uint64 allocation of 8 bytes per element. For all
+// other ordered types, Sort is an in-place comparison sort with
 // minimal allocation.
 //
 // Use [SortInPlace] if you need a guaranteed in-place sort for strings,
@@ -45,6 +45,16 @@ func Sort[S ~[]E, E cmp.Ordered](x S) {
 	var zero E
 	switch any(zero).(type) {
 	case string:
+		// If the input has long shared prefixes (e.g. URLs all starting
+		// with "https://"), the abbreviated-key trick is wasted work.
+		// Cheap sniff via sampled abbrevs decides whether to take it.
+		// When bailing, SortInPlace is preferable to sortKeyString's
+		// internal fallback because it uses the specialized slices.Sort
+		// on cmp.Ordered types, avoiding a per-compare type assertion.
+		if len(x) >= minParallel && !hasAbbrevDiversity(x, func(e E) uint64 { return abbreviateString(any(e).(string)) }) {
+			SortInPlace(x)
+			return
+		}
 		sortKeyString(x, func(e E) string { return any(e).(string) }, nil)
 		return
 	}

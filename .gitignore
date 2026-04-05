@@ -1,0 +1,7 @@
+# Local-only benchmarks that depend on non-redistributable test data
+# (Wikipedia titles, URL lists). See testdata/ below.
+bench_wiki_test.go
+
+# Large corpora used by bench_wiki_test.go — not redistributed here.
+# Later we may add a script to let others fetch/generate similar files.
+testdata/
