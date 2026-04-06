@@ -18,7 +18,7 @@ import (
 // []uint64 alongside the input (swapping items in place), and falls
 // back to full key comparison on ties. This is the same optimization
 // that [Sort] uses for []string. In benchmarks with random 20-byte
-// strings, it is roughly 1.5–2x faster than [SortFunc] or
+// strings, it is roughly 1.5–3x faster than [SortFunc] or
 // [SortInPlace] at 1M–10M elements.
 //
 // The optimization allocates a temporary []uint64 of 8 bytes per
