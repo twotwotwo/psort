@@ -258,32 +258,44 @@ func sortKeyBytesImpl[S ~[]E, E any](x S, key func(E) []byte, tiebreaker func(a,
 	putAbbrevs(pabbrevs)
 }
 
-// hasAbbrevDiversity samples a small number of elements from x, computes
-// their abbreviated keys, and returns whether the distinct-abbrev count
-// is at least half the sample size. It uses the same sample layout that
-// partitionSplit would use, so the decision is representative of the
-// pivots the partitioning step would pick.
+// hasAbbrevDiversity samples 64 evenly-spaced elements from x, computes
+// their abbreviated keys, and returns false (bail out) if fewer than 48
+// are distinct OR if more than 8 distinct values appear multiple times.
+// The run-count check catches moderate-entropy distributions where many
+// prefixes collide — a sign that the full array will need heavy elemCmp
+// fallback, making the abbrev path not worth the overhead.
 func hasAbbrevDiversity[S ~[]E, E any](x S, abbrevFn func(E) uint64) bool {
-	nproc := runtime.GOMAXPROCS(0)
-	maxDepth, _ := partitionLayout(nproc)
-	numSamples := 1 << maxDepth
+	const numSamples = 64
+	const minDistinct = 48
+	const maxRuns = 8
 	n := len(x)
 	stride := n / numSamples
 	if stride >= 2 && stride&(stride-1) == 0 {
 		stride--
 	}
-	samples := make([]uint64, numSamples)
+	var samples [numSamples]uint64
 	for i := range samples {
 		samples[i] = abbrevFn(x[i*stride+stride/2])
 	}
-	slices.Sort(samples)
+	slices.Sort(samples[:])
 	distinct := 1
-	for i := 1; i < len(samples); i++ {
+	runs := 0     // number of groups of 2+ identical abbrevs
+	runLen := 1   // length of current run
+	for i := 1; i < numSamples; i++ {
 		if samples[i] != samples[i-1] {
 			distinct++
+			if runLen > 1 {
+				runs++
+			}
+			runLen = 1
+		} else {
+			runLen++
 		}
 	}
-	return distinct*2 >= numSamples
+	if runLen > 1 {
+		runs++
+	}
+	return distinct >= minDistinct && runs <= maxRuns
 }
 
 // --- Split-array sort: parallel partition + per-partition MSD radix ---
