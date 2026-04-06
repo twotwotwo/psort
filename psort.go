@@ -1,21 +1,23 @@
 // Package psort provides parallel sorting for slices.
 //
-// [Sort] and [SortFunc] sort a slice using multiple goroutines. They
-// partition the data into ordered spans using a quicksort-style
-// partition pass, then sort each span independently and in parallel.
-// Concatenating the sorted spans produces a fully sorted slice.
+// [Sort] sorts ordered types using multiple goroutines. For []string,
+// it automatically uses an abbreviated-key optimization (packing
+// leading bytes into a uint64 for faster comparison) at the cost of a
+// temporary []uint64 allocation. For all other ordered types, it is a
+// purely in-place comparison sort.
 //
 // [SortKey] and [SortKeyBytes] sort by a key extracted from each
-// element. For string and []byte keys they use an abbreviated-key
-// optimization that is faster than [Sort] for large slices, at the
-// cost of a temporary allocation. See their documentation for details.
+// element, using the same abbreviated-key optimization for string and
+// []byte keys. See their documentation for details.
 //
-// [SortFunc] is a purely in-place comparison sort with minimal
-// allocation, useful when you need full control over the comparison
-// or want to avoid extra memory use.
+// [SortInPlace] and [SortFunc] are purely in-place comparison sorts
+// with minimal allocation. Use [SortInPlace] to sort strings without
+// the extra allocation, or [SortFunc] for a custom comparison.
 //
-// For small slices, all functions fall back to the corresponding
-// [slices] function directly.
+// All functions partition the data into ordered spans using a
+// quicksort-style partition pass, then sort each span independently
+// and in parallel. For small slices, they fall back to the
+// corresponding [slices] function directly.
 package psort
 
 import (

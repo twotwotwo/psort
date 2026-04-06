@@ -16,9 +16,10 @@ import (
 // For string keys, SortKey uses an abbreviated-key optimization: it
 // packs the leading bytes of each key into a uint64, sorts a parallel
 // []uint64 alongside the input (swapping items in place), and falls
-// back to full key comparison on ties. In benchmarks with random
-// 20-byte strings, this is roughly 1.5–2x faster than [Sort] at
-// 1M–10M elements.
+// back to full key comparison on ties. This is the same optimization
+// that [Sort] uses for []string. In benchmarks with random 20-byte
+// strings, it is roughly 1.5–2x faster than [SortFunc] or
+// [SortInPlace] at 1M–10M elements.
 //
 // The optimization allocates a temporary []uint64 of 8 bytes per
 // element. For a []string of 1M items, this is about 8 MB. Use
